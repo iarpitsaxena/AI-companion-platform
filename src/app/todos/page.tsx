@@ -102,7 +102,7 @@ export default function TodosPage() {
         ))}
       </div>
 
-      <div className="mt-4 grid gap-3">
+      <div className="hamburger-scrollbar mt-4 grid max-h-[62vh] gap-3 overflow-y-auto pr-1">
         {todos.map((todo) => (
           <div
             key={todo.id}

@@ -1,4 +1,5 @@
 import { featureFlags } from "@/lib/feature-flags";
+import { CloudClient } from "chromadb";
 
 interface MemoryQueryInput {
   userId: string;
@@ -19,7 +20,9 @@ interface MemoryStoreInput {
   }>;
 }
 
-const CHROMA_BASE_URL = process.env.NEXT_PUBLIC_CHROMA_URL?.replace(/\/$/, "");
+const CHROMA_API_KEY = process.env.CHROMA_API_KEY;
+const CHROMA_TENANT = process.env.CHROMA_TENANT;
+const CHROMA_DATABASE = process.env.CHROMA_DATABASE;
 const CHROMA_COLLECTION =
   process.env.CHROMA_COLLECTION || "ai_companion_memory";
 
@@ -43,119 +46,79 @@ function embedText(text: string) {
   return vector;
 }
 
-function chromaHeaders() {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
+let collectionPromise: Promise<Awaited<
+  ReturnType<CloudClient["getOrCreateCollection"]>
+> | null> | null = null;
 
-  if (process.env.CHROMA_API_KEY) {
-    headers.Authorization = `Bearer ${process.env.CHROMA_API_KEY}`;
-  }
-
-  return headers;
-}
-
-async function ensureCollectionId() {
-  if (!CHROMA_BASE_URL) {
+async function getCollection() {
+  if (!featureFlags.chromaMemory) {
     return null;
   }
 
-  try {
-    const createResponse = await fetch(
-      `${CHROMA_BASE_URL}/api/v1/collections`,
-      {
-        method: "POST",
-        headers: chromaHeaders(),
-        body: JSON.stringify({
+  if (!CHROMA_API_KEY || !CHROMA_TENANT || !CHROMA_DATABASE) {
+    return null;
+  }
+
+  if (!collectionPromise) {
+    collectionPromise = (async () => {
+      try {
+        const client = new CloudClient({
+          apiKey: CHROMA_API_KEY,
+          tenant: CHROMA_TENANT,
+          database: CHROMA_DATABASE,
+        });
+
+        return await client.getOrCreateCollection({
           name: CHROMA_COLLECTION,
-          get_or_create: true,
           metadata: { purpose: "long_term_memory" },
-        }),
-      },
-    );
-
-    if (createResponse.ok) {
-      const collection = (await createResponse.json()) as { id?: string };
-      if (collection.id) {
-        return collection.id;
+        });
+      } catch {
+        return null;
       }
-    }
-
-    const listResponse = await fetch(`${CHROMA_BASE_URL}/api/v1/collections`, {
-      method: "GET",
-      headers: chromaHeaders(),
-    });
-
-    if (!listResponse.ok) {
-      return null;
-    }
-
-    const payload = (await listResponse.json()) as Array<{
-      id: string;
-      name: string;
-    }>;
-    const match = payload.find(
-      (collection) => collection.name === CHROMA_COLLECTION,
-    );
-    return match?.id ?? null;
-  } catch {
-    return null;
+    })();
   }
+
+  return collectionPromise;
 }
 
 export async function queryChromaMemories(input: MemoryQueryInput) {
-  if (!featureFlags.chromaMemory || !CHROMA_BASE_URL || !input.text.trim()) {
+  if (!featureFlags.chromaMemory || !input.text.trim()) {
     return [] as string[];
   }
 
-  const collectionId = await ensureCollectionId();
-  if (!collectionId) {
+  const collection = await getCollection();
+  if (!collection) {
     return [];
   }
 
   try {
-    const response = await fetch(
-      `${CHROMA_BASE_URL}/api/v1/collections/${collectionId}/query`,
-      {
-        method: "POST",
-        headers: chromaHeaders(),
-        body: JSON.stringify({
-          query_embeddings: [embedText(input.text)],
-          n_results: input.limit ?? 4,
-          where: {
-            user_id: input.userId,
-            companion_id: input.companionId,
-          },
-          include: ["documents"],
-        }),
+    const payload = await collection.query({
+      queryEmbeddings: [embedText(input.text)],
+      nResults: input.limit ?? 4,
+      where: {
+        user_id: input.userId,
+        companion_id: input.companionId,
       },
+      include: ["documents"],
+    });
+
+    return (
+      payload.documents?.[0]?.filter(
+        (item): item is string => typeof item === "string" && item.length > 0,
+      ) ?? []
     );
-
-    if (!response.ok) {
-      return [];
-    }
-
-    const payload = (await response.json()) as {
-      documents?: string[][];
-    };
-
-    return payload.documents?.[0]?.filter(Boolean) ?? [];
   } catch {
     return [];
   }
 }
 
 export async function storeChromaMemories(input: MemoryStoreInput) {
-  if (
-    !featureFlags.chromaMemory ||
-    !CHROMA_BASE_URL ||
-    input.messages.length === 0
-  ) {
+  if (!featureFlags.chromaMemory || input.messages.length === 0) {
     return;
   }
 
-  const collectionId = await ensureCollectionId();
-  if (!collectionId) {
+  const collection = await getCollection();
+  if (!collection) {
     return;
   }
 
@@ -175,15 +138,11 @@ export async function storeChromaMemories(input: MemoryStoreInput) {
       created_at: message.createdAt,
     }));
 
-    await fetch(`${CHROMA_BASE_URL}/api/v1/collections/${collectionId}/add`, {
-      method: "POST",
-      headers: chromaHeaders(),
-      body: JSON.stringify({
-        ids,
-        documents,
-        embeddings,
-        metadatas,
-      }),
+    await collection.add({
+      ids,
+      documents,
+      embeddings,
+      metadatas,
     });
   } catch {
     return;

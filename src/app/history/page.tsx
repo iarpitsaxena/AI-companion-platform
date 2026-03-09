@@ -155,7 +155,7 @@ export default function HistoryPage() {
         </select>
       </div>
 
-      <div className="mt-4 grid gap-3">
+      <div className="hamburger-scrollbar mt-4 grid max-h-[62vh] gap-3 overflow-y-auto pr-1">
         {filtered.map((row) => (
           <div key={row.id} className="card">
             <h3 className="font-semibold">{row.title || "Untitled"}</h3>

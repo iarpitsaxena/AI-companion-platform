@@ -119,7 +119,7 @@ export default function NotesPage() {
         onChange={(event) => setQuery(event.target.value)}
       />
 
-      <div className="mt-4 grid gap-3">
+      <div className="hamburger-scrollbar mt-4 grid max-h-[62vh] gap-3 overflow-y-auto pr-1">
         {filtered.map((note) => (
           <div key={note.id} className="card">
             <h3 className="font-semibold">{note.title}</h3>

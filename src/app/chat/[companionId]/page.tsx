@@ -248,6 +248,7 @@ export default function ChatPage() {
   const [audioOutputEnabled, setAudioOutputEnabled] = useState(false);
   const [voiceError, setVoiceError] = useState<string>("");
   const endRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -256,7 +257,9 @@ export default function ChatPage() {
   const isTtsEnabled = process.env.NEXT_PUBLIC_FEATURE_TTS !== "false";
 
   const scrollToEnd = () => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   };
 
   const loadSession = async () => {
@@ -364,34 +367,63 @@ export default function ChatPage() {
     const trimmedContent = content.trim();
     if (!trimmedContent || isLoading) return;
 
+    const optimisticId = `local-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: optimisticId,
+      conversation_id: conversationId ?? "",
+      role: "user",
+      content: trimmedContent,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, optimisticMessage]);
+    setTimeout(scrollToEnd, 0);
+
     setIsLoading(true);
     setIsTyping(true);
 
-    const res = await fetch("/api/chat/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        companionId,
-        content: trimmedContent,
-      }),
-    });
+    try {
+      const res = await fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companionId,
+          content: trimmedContent,
+        }),
+      });
 
-    const json = await res.json();
-    if (json.conversationId) {
-      setConversationId(json.conversationId);
+      const json = await res.json();
+
+      if (!res.ok) {
+        setMessages((prev) =>
+          prev.filter((message) => message.id !== optimisticId),
+        );
+        setVoiceError(json.error ?? "Failed to send message.");
+        return;
+      }
+
+      if (json.conversationId) {
+        setConversationId(json.conversationId);
+      }
+
+      await loadSession();
+
+      if (
+        audioOutputEnabled &&
+        isTtsEnabled &&
+        json.message?.role === "assistant"
+      ) {
+        await playTts(json.message.content, json.message.id);
+      }
+    } catch {
+      setMessages((prev) =>
+        prev.filter((message) => message.id !== optimisticId),
+      );
+      setVoiceError("Failed to send message.");
+    } finally {
+      setIsLoading(false);
+      setIsTyping(false);
     }
-
-    if (
-      audioOutputEnabled &&
-      isTtsEnabled &&
-      json.message?.role === "assistant"
-    ) {
-      await playTts(json.message.content, json.message.id);
-    }
-
-    setIsLoading(false);
-    setIsTyping(false);
-    await loadSession();
   };
 
   const send = async (event: FormEvent) => {
@@ -521,196 +553,218 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <SignedLayout>
-      <div className="mb-4">
-        <h1 className="page-title">Chat</h1>
-        <p className="page-subtitle">
-          Focused conversation with memory, voice, and task actions.
-        </p>
-      </div>
-
-      <div className="card chat-window h-[62vh] overflow-y-auto p-4">
-        {voiceError && (
-          <p className="mb-2 rounded-md border border-(--border) bg-(--surface-soft) px-3 py-2 text-sm">
-            {voiceError}
+    <SignedLayout mainScrollable={false} mainClassName="overflow-hidden p-0">
+      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="mb-2 shrink-0 px-3 pt-3">
+          <h1 className="page-title">Chat</h1>
+          <p className="page-subtitle">
+            Focused conversation with memory, voice, and task actions.
           </p>
-        )}
-        {messages.length === 0 && (
-          <p className="muted">Start a conversation with your companion.</p>
-        )}
-        <div className="space-y-3">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`chat-bubble max-w-[80%] rounded-xl p-3 ${
-                message.role === "user"
-                  ? "chat-bubble-user ml-auto"
-                  : "chat-bubble-assistant"
-              }`}
-            >
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide opacity-70">
-                  {message.role === "user" ? "You" : "Companion"}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-icon-sm"
-                  onClick={() => copyMessage(message.id, message.content)}
-                  title={copiedMessageId === message.id ? "Copied" : "Copy"}
-                  aria-label={
-                    copiedMessageId === message.id ? "Copied" : "Copy"
-                  }
-                >
-                  {copiedMessageId === message.id ? (
-                    <CheckIcon />
-                  ) : (
-                    <CopyIcon />
-                  )}
-                  <span className="sr-only">
-                    {copiedMessageId === message.id ? "Copied" : "Copy"}
-                  </span>
-                </button>
-                {isTtsEnabled && message.role === "assistant" && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-icon-sm"
-                    onClick={() => speakMessage(message.id, message.content)}
-                    disabled={speakingMessageId === message.id}
-                    title={
-                      speakingMessageId === message.id ? "Speaking" : "Listen"
-                    }
-                    aria-label={
-                      speakingMessageId === message.id ? "Speaking" : "Listen"
-                    }
-                  >
-                    {speakingMessageId === message.id ? (
-                      <WaveIcon />
-                    ) : (
-                      <PlayIcon />
-                    )}
-                    <span className="sr-only">
-                      {speakingMessageId === message.id ? "Speaking" : "Listen"}
-                    </span>
-                  </button>
-                )}
-              </div>
-              <p className="text-sm">{message.content}</p>
-              <p className="mt-1 text-xs opacity-70">
-                {new Date(message.created_at).toLocaleString()}
-              </p>
-            </div>
-          ))}
         </div>
-        {isTyping && (
-          <p className="chat-typing muted mt-3 text-sm">
-            Companion is typing...
-          </p>
-        )}
-        <div ref={endRef} />
-      </div>
 
-      <form onSubmit={send} className="chat-composer mt-3 flex gap-2 p-2">
-        <input
-          className="input chat-input"
-          placeholder="Type your message"
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-        />
-        <button
-          className="btn btn-primary btn-icon"
-          type="submit"
-          disabled={isLoading}
-        >
-          {isLoading ? <LoaderIcon /> : <SendIcon />}
-          <span className="sr-only">Send</span>
-        </button>
-        {isSttEnabled && (
-          <button
-            type="button"
-            className={`btn btn-icon ${isRecording ? "btn-primary" : "btn-secondary"}`}
-            onClick={toggleRecording}
-            disabled={isTranscribing}
-            title={
-              isRecording
-                ? "Stop microphone"
-                : isTranscribing
-                  ? "Transcribing"
-                  : "Use microphone"
-            }
-            aria-label={
-              isRecording
-                ? "Stop microphone"
-                : isTranscribing
-                  ? "Transcribing"
-                  : "Use microphone"
-            }
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-3 pb-3">
+          <div
+            ref={messagesContainerRef}
+            className="card chat-window hamburger-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-4"
           >
-            {isRecording ? (
-              <StopIcon />
-            ) : isTranscribing ? (
-              <LoaderIcon />
-            ) : (
-              <MicIcon />
+            {voiceError && (
+              <p className="mb-2 rounded-md border border-(--border) bg-(--surface-soft) px-3 py-2 text-sm">
+                {voiceError}
+              </p>
             )}
-            <span className="sr-only">
-              {isRecording
-                ? "Stop microphone"
-                : isTranscribing
-                  ? "Transcribing"
-                  : "Use microphone"}
-            </span>
-          </button>
-        )}
-        {isTtsEnabled && (
-          <button
-            type="button"
-            className={`btn btn-icon ${audioOutputEnabled ? "btn-primary" : "btn-secondary"}`}
-            onClick={() => setAudioOutputEnabled((prev) => !prev)}
-            title={audioOutputEnabled ? "Audio on" : "Audio off"}
-            aria-label={audioOutputEnabled ? "Audio on" : "Audio off"}
+            {messages.length === 0 && (
+              <p className="muted">Start a conversation with your companion.</p>
+            )}
+            <div className="space-y-3">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`chat-bubble w-fit max-w-[80%] wrap-break-word whitespace-pre-wrap rounded-xl p-3 ${
+                    message.role === "user"
+                      ? "chat-bubble-user ml-auto"
+                      : "chat-bubble-assistant"
+                  }`}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                      {message.role === "user" ? "You" : "Companion"}
+                    </span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-icon-sm"
+                        onClick={() => copyMessage(message.id, message.content)}
+                        title={
+                          copiedMessageId === message.id ? "Copied" : "Copy"
+                        }
+                        aria-label={
+                          copiedMessageId === message.id ? "Copied" : "Copy"
+                        }
+                      >
+                        {copiedMessageId === message.id ? (
+                          <CheckIcon />
+                        ) : (
+                          <CopyIcon />
+                        )}
+                        <span className="sr-only">
+                          {copiedMessageId === message.id ? "Copied" : "Copy"}
+                        </span>
+                      </button>
+                      {isTtsEnabled && message.role === "assistant" && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-icon-sm"
+                          onClick={() =>
+                            speakMessage(message.id, message.content)
+                          }
+                          disabled={speakingMessageId === message.id}
+                          title={
+                            speakingMessageId === message.id
+                              ? "Speaking"
+                              : "Listen"
+                          }
+                          aria-label={
+                            speakingMessageId === message.id
+                              ? "Speaking"
+                              : "Listen"
+                          }
+                        >
+                          {speakingMessageId === message.id ? (
+                            <WaveIcon />
+                          ) : (
+                            <PlayIcon />
+                          )}
+                          <span className="sr-only">
+                            {speakingMessageId === message.id
+                              ? "Speaking"
+                              : "Listen"}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm">{message.content}</p>
+                  <p className="mt-1 text-xs opacity-70">
+                    {new Date(message.created_at).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {isTyping && (
+              <p className="chat-typing muted mt-3 text-sm">
+                Companion is typing...
+              </p>
+            )}
+            <div ref={endRef} />
+          </div>
+
+          <form
+            onSubmit={send}
+            className="chat-composer flex shrink-0 gap-2 p-2"
           >
-            {audioOutputEnabled ? <VolumeOnIcon /> : <VolumeOffIcon />}
-            <span className="sr-only">
-              {audioOutputEnabled ? "Audio on" : "Audio off"}
-            </span>
+            <input
+              className="input chat-input"
+              placeholder="Type your message"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+            />
+            <button
+              className="btn btn-primary btn-icon"
+              type="submit"
+              disabled={isLoading}
+            >
+              {isLoading ? <LoaderIcon /> : <SendIcon />}
+              <span className="sr-only">Send</span>
+            </button>
+            {isSttEnabled && (
+              <button
+                type="button"
+                className={`btn btn-icon ${isRecording ? "btn-primary" : "btn-secondary"}`}
+                onClick={toggleRecording}
+                disabled={isTranscribing}
+                title={
+                  isRecording
+                    ? "Stop microphone"
+                    : isTranscribing
+                      ? "Transcribing"
+                      : "Use microphone"
+                }
+                aria-label={
+                  isRecording
+                    ? "Stop microphone"
+                    : isTranscribing
+                      ? "Transcribing"
+                      : "Use microphone"
+                }
+              >
+                {isRecording ? (
+                  <StopIcon />
+                ) : isTranscribing ? (
+                  <LoaderIcon />
+                ) : (
+                  <MicIcon />
+                )}
+                <span className="sr-only">
+                  {isRecording
+                    ? "Stop microphone"
+                    : isTranscribing
+                      ? "Transcribing"
+                      : "Use microphone"}
+                </span>
+              </button>
+            )}
+            {isTtsEnabled && (
+              <button
+                type="button"
+                className={`btn btn-icon ${audioOutputEnabled ? "btn-primary" : "btn-secondary"}`}
+                onClick={() => setAudioOutputEnabled((prev) => !prev)}
+                title={audioOutputEnabled ? "Audio on" : "Audio off"}
+                aria-label={audioOutputEnabled ? "Audio on" : "Audio off"}
+              >
+                {audioOutputEnabled ? <VolumeOnIcon /> : <VolumeOffIcon />}
+                <span className="sr-only">
+                  {audioOutputEnabled ? "Audio on" : "Audio off"}
+                </span>
+              </button>
+            )}
+          </form>
+
+          <button
+            className="btn btn-secondary btn-icon shrink-0"
+            title="Clear chat history"
+            aria-label="Clear chat history"
+            onClick={async () => {
+              if (!conversationId) return;
+              await fetch(`/api/conversations?id=${conversationId}`, {
+                method: "DELETE",
+              });
+              setConversationId(null);
+              setMessages([]);
+            }}
+          >
+            <TrashIcon />
+            <span className="sr-only">Clear chat history</span>
           </button>
-        )}
-      </form>
 
-      <button
-        className="btn btn-secondary btn-icon mt-3"
-        title="Clear chat history"
-        aria-label="Clear chat history"
-        onClick={async () => {
-          if (!conversationId) return;
-          await fetch(`/api/conversations?id=${conversationId}`, {
-            method: "DELETE",
-          });
-          setConversationId(null);
-          setMessages([]);
-        }}
-      >
-        <TrashIcon />
-        <span className="sr-only">Clear chat history</span>
-      </button>
-
-      <div className="card chat-help mt-3">
-        <p className="text-sm font-semibold">
-          Task commands (for companion actions)
-        </p>
-        <p className="muted mt-1 text-xs">
-          note add | title | content · note update | id-or-title | new-content ·
-          note delete | id-or-title
-        </p>
-        <p className="muted mt-1 text-xs">
-          todo add | title · todo update | id-or-title | new-title · todo
-          complete | id-or-title · todo reopen | id-or-title · todo delete |
-          id-or-title
-        </p>
-        <p className="muted mt-2 text-xs">
-          Also works with natural phrases like: “add todo buy milk”, “complete
-          task buy milk”, “delete note meeting notes”.
-        </p>
+          <div className="card chat-help shrink-0">
+            <p className="text-sm font-semibold">
+              Task commands (for companion actions)
+            </p>
+            <p className="muted mt-1 text-xs">
+              note add | title | content · note update | id-or-title |
+              new-content · note delete | id-or-title
+            </p>
+            <p className="muted mt-1 text-xs">
+              todo add | title · todo update | id-or-title | new-title · todo
+              complete | id-or-title · todo reopen | id-or-title · todo delete |
+              id-or-title
+            </p>
+            <p className="muted mt-2 text-xs">
+              Also works with natural phrases like: “add todo buy milk”,
+              “complete task buy milk”, “delete note meeting notes”.
+            </p>
+          </div>
+        </div>
       </div>
     </SignedLayout>
   );

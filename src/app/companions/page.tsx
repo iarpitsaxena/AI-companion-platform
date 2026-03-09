@@ -14,6 +14,16 @@ const traits = [
   "creative",
 ];
 
+const toneOptions = [
+  "balanced",
+  "warm",
+  "professional",
+  "encouraging",
+  "direct",
+  "playful",
+  "calm",
+] as const;
+
 const emptyForm = {
   name: "",
   avatar_url: "",
@@ -30,6 +40,8 @@ const emptyForm = {
 export default function CompanionsPage() {
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [form, setForm] = useState(emptyForm);
+  const [toneMode, setToneMode] = useState<string>(emptyForm.tone_preference);
+  const [customTone, setCustomTone] = useState<string>("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string>("");
   const [actionSuccess, setActionSuccess] = useState<string>("");
@@ -66,13 +78,15 @@ export default function CompanionsPage() {
     setActionError("");
     setActionSuccess("");
 
+    const normalizedTone = toneMode === "custom" ? customTone.trim() : toneMode;
+
     const payload = {
       ...form,
       avatar_url: form.avatar_url || null,
       description: form.description || null,
       custom_prompt: form.custom_prompt || null,
       background_story: form.background_story || null,
-      tone_preference: form.tone_preference || null,
+      tone_preference: normalizedTone || null,
     };
 
     if (editingId) {
@@ -106,11 +120,18 @@ export default function CompanionsPage() {
     }
 
     setForm(emptyForm);
+    setToneMode(emptyForm.tone_preference);
+    setCustomTone("");
     setEditingId(null);
     await load();
   };
 
   const startEdit = (companion: Companion) => {
+    const tone = (companion.tone_preference ?? "").trim();
+    const isPresetTone = toneOptions.includes(
+      tone as (typeof toneOptions)[number],
+    );
+
     setEditingId(companion.id);
     setForm({
       name: companion.name,
@@ -122,8 +143,10 @@ export default function CompanionsPage() {
       custom_prompt: companion.custom_prompt ?? "",
       background_story: companion.background_story ?? "",
       relationship_type: companion.relationship_type,
-      tone_preference: companion.tone_preference ?? "",
+      tone_preference: tone,
     });
+    setToneMode(isPresetTone ? tone : "custom");
+    setCustomTone(isPresetTone ? "" : tone);
   };
 
   return (
@@ -137,7 +160,7 @@ export default function CompanionsPage() {
 
       <section>
         <h2 className="mb-3 text-lg font-medium">Available companions</h2>
-        <div className="grid gap-3">
+        <div className="hamburger-scrollbar grid max-h-[62vh] gap-3 overflow-y-auto pr-1">
           {companions.map((companion) => (
             <div key={companion.id} className="card">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -207,7 +230,11 @@ export default function CompanionsPage() {
             {actionSuccess}
           </p>
         )}
+        <label className="text-sm font-medium" htmlFor="companion-name">
+          Companion name
+        </label>
         <input
+          id="companion-name"
           className="input"
           placeholder="Companion name"
           value={form.name}
@@ -216,7 +243,11 @@ export default function CompanionsPage() {
           }
           required
         />
+        <label className="text-sm font-medium" htmlFor="avatar-url">
+          Avatar URL
+        </label>
         <input
+          id="avatar-url"
           className="input"
           placeholder="Avatar URL"
           value={form.avatar_url}
@@ -224,7 +255,11 @@ export default function CompanionsPage() {
             setForm((prev) => ({ ...prev, avatar_url: event.target.value }))
           }
         />
+        <label className="text-sm font-medium" htmlFor="short-description">
+          Short description
+        </label>
         <input
+          id="short-description"
           className="input"
           placeholder="Short description"
           value={form.description}
@@ -234,45 +269,61 @@ export default function CompanionsPage() {
         />
 
         <div className="grid gap-3 md:grid-cols-2">
-          <select
-            className="select"
-            value={form.communication_style}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                communication_style: event.target.value,
-              }))
-            }
-          >
-            {["casual", "formal", "enthusiastic", "calm", "playful"].map(
-              (item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ),
-            )}
-          </select>
-          <select
-            className="select"
-            value={form.expertise_area}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                expertise_area: event.target.value,
-              }))
-            }
-          >
-            {["general", "tech", "lifestyle", "wellness", "education"].map(
-              (item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ),
-            )}
-          </select>
+          <div className="grid gap-2">
+            <label className="text-sm font-medium" htmlFor="communication-style">
+              Communication style
+            </label>
+            <select
+              id="communication-style"
+              className="select"
+              value={form.communication_style}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  communication_style: event.target.value,
+                }))
+              }
+            >
+              {["casual", "formal", "enthusiastic", "calm", "playful"].map(
+                (item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ),
+              )}
+            </select>
+          </div>
+          <div className="grid gap-2">
+            <label className="text-sm font-medium" htmlFor="expertise-area">
+              Expertise area
+            </label>
+            <select
+              id="expertise-area"
+              className="select"
+              value={form.expertise_area}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  expertise_area: event.target.value,
+                }))
+              }
+            >
+              {["general", "tech", "lifestyle", "wellness", "education"].map(
+                (item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ),
+              )}
+            </select>
+          </div>
         </div>
 
+        <label className="text-sm font-medium" htmlFor="relationship-type">
+          Relationship type
+        </label>
         <select
+          id="relationship-type"
           className="select"
           value={form.relationship_type}
           onChange={(event) =>
@@ -289,6 +340,7 @@ export default function CompanionsPage() {
           ))}
         </select>
 
+        <p className="text-sm font-medium">Personality traits</p>
         <div className="grid gap-2 md:grid-cols-3">
           {traits.map((trait) => {
             const selected = form.traits.includes(trait);
@@ -312,7 +364,11 @@ export default function CompanionsPage() {
           })}
         </div>
 
+        <label className="text-sm font-medium" htmlFor="background-story">
+          Background story
+        </label>
         <textarea
+          id="background-story"
           className="textarea"
           placeholder="Background story"
           value={form.background_story}
@@ -323,7 +379,11 @@ export default function CompanionsPage() {
             }))
           }
         />
+        <label className="text-sm font-medium" htmlFor="custom-system-prompt">
+          Custom system prompt
+        </label>
         <textarea
+          id="custom-system-prompt"
           className="textarea"
           placeholder="Custom system prompt"
           value={form.custom_prompt}
@@ -331,17 +391,33 @@ export default function CompanionsPage() {
             setForm((prev) => ({ ...prev, custom_prompt: event.target.value }))
           }
         />
-        <input
-          className="input"
-          placeholder="Tone preference"
-          value={form.tone_preference}
+        <label className="text-sm font-medium" htmlFor="tone-preference">
+          Tone preference
+        </label>
+        <select
+          id="tone-preference"
+          className="select"
+          value={toneMode}
           onChange={(event) =>
-            setForm((prev) => ({
-              ...prev,
-              tone_preference: event.target.value,
-            }))
+            setToneMode(event.target.value)
           }
-        />
+        >
+          {toneOptions.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+          <option value="custom">custom</option>
+        </select>
+        {toneMode === "custom" && (
+          <input
+            id="tone-preference-custom"
+            className="input"
+            placeholder="Enter custom tone"
+            value={customTone}
+            onChange={(event) => setCustomTone(event.target.value)}
+          />
+        )}
 
         <div className="flex gap-2">
           <button className="btn btn-primary" type="submit">
@@ -354,6 +430,8 @@ export default function CompanionsPage() {
               onClick={() => {
                 setEditingId(null);
                 setForm(emptyForm);
+                setToneMode(emptyForm.tone_preference);
+                setCustomTone("");
               }}
             >
               Cancel

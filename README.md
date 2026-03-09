@@ -1,50 +1,61 @@
-# AI Companion Platform (MVP)
+# AI Companion Platform
 
-This repository contains an MVP implementation of an AI companion platform where users can:
+AI Companion Platform is a Next.js full-stack app where authenticated users create AI companions, chat with them, and manage companion-driven productivity data (notes and todos).
 
-- Sign up and log in
-- Create/edit/delete/duplicate AI companions
-- Chat in real time with persistent memory
-- View conversation history and export chats (TXT/PDF/JSON)
-- Manage notes and to-do lists
-- View basic conversation analytics
+## What this project does
 
-## Tech Stack
+- Companion CRUD with personality/profile fields
+- Real-time chat with persisted conversation history
+- Natural-language task commands for notes and todos
+- Optional long-term memory retrieval via Chroma Cloud
+- Optional voice features (STT and TTS)
+- History and analytics pages for engagement tracking
 
-- Frontend + backend: Next.js (App Router) + TypeScript
+## End-to-end flow (high level)
+
+1. User sends a message in `/chat/[companionId]`
+2. `POST /api/chat/send` validates and stores the user message in Supabase
+3. Route gathers short-term history + optional Chroma memory snippets
+4. Route builds system context and calls Groq chat completions
+5. Assistant reply is stored in Supabase and streamed to UI via realtime
+6. Latest turn is optionally added to Chroma memory for future retrieval
+
+## Tech stack
+
+- App framework: Next.js App Router + TypeScript
 - Auth: Clerk
-- DB + realtime + storage: Supabase
+- Primary DB + realtime: Supabase (Postgres + Realtime)
 - LLM: Groq
-- Planned integrations (env placeholders included): Chroma, ElevenLabs, Deepgram, Replicate
+- Long-term memory: Chroma Cloud (optional)
+- Voice (optional): Deepgram (STT), ElevenLabs (TTS)
 
-## Setup
+## Quick start
 
-1. Install dependencies:
+1. Install dependencies
 
 ```bash
 npm install
 ```
 
-2. Copy env template:
+2. Configure `.env.local` with required values
 
-```bash
-cp .env.example .env.local
+```dotenv
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
-3. Fill required variables in `.env.local`:
+3. Create database schema in Supabase
 
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `GROQ_API_KEY`
+- Execute `supabase/schema.sql` in Supabase SQL editor.
 
-4. Create Supabase schema:
-
-- Run SQL from `supabase/schema.sql` in your Supabase SQL editor.
-
-5. Start dev server:
+4. Start development server
 
 ```bash
 npm run dev
@@ -52,54 +63,48 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## Implemented MVP Features
+## Optional features
 
-- Authentication (register/login/logout) with Clerk routes
-- User profile management via Clerk User Profile page
-- Companion management with personality configuration
-- Chat with persisted conversation memory
-- Conversation history search/filter/delete/export
-- Notes CRUD with search
-- To-do CRUD with status filters
-- Conversation analytics overview
+### Long-term memory (Chroma)
 
-## Optional Feature Flags
+```dotenv
+FEATURE_CHROMA_MEMORY=true
+CHROMA_API_KEY=
+CHROMA_TENANT=
+CHROMA_DATABASE=
+CHROMA_COLLECTION=ai_companion_memory
+```
 
-Enable advanced capabilities by setting the following in `.env.local`:
+### Speech-to-text (Deepgram)
 
-- `FEATURE_CHROMA_MEMORY=true` to enable long-term vector memory retrieval/store
-- `FEATURE_STT=true` to enable Deepgram speech-to-text endpoint
-- `FEATURE_TTS=true` to enable ElevenLabs text-to-speech endpoint
-- `NEXT_PUBLIC_FEATURE_STT=true` to show mic controls in chat UI
-- `NEXT_PUBLIC_FEATURE_TTS=true` to show listen controls in chat UI
+```dotenv
+FEATURE_STT=true
+NEXT_PUBLIC_FEATURE_STT=true
+DEEPGRAM_API_KEY=
+```
 
-### Chroma memory config
+### Text-to-speech (ElevenLabs)
 
-- `NEXT_PUBLIC_CHROMA_URL` (required when `FEATURE_CHROMA_MEMORY=true`)
-- `CHROMA_API_KEY` (optional, if your Chroma host requires auth)
-- `CHROMA_COLLECTION` (optional, default: `ai_companion_memory`)
+```dotenv
+FEATURE_TTS=true
+NEXT_PUBLIC_FEATURE_TTS=true
+ELEVENLABS_API_KEY=
+```
 
-### STT endpoint (Deepgram)
+## Repository map
 
-- `POST /api/stt/deepgram`
-- `multipart/form-data` field: `audio`
-- Optional form field: `model`
-- Returns: `{ transcript, provider, model }`
+- `src/app/*`: pages + API routes
+- `src/components/*`: shared UI shell/navigation
+- `src/lib/*`: auth, integrations, utility services
+- `src/lib/chat/*`: task command and prompt builder modules
+- `supabase/schema.sql`: tables, relationships, RLS policies
+- `docs/*`: architecture and runtime documentation
 
-### TTS endpoint (ElevenLabs)
+## Documentation index
 
-- `POST /api/tts/elevenlabs`
-- JSON body: `{ "text": "Hello", "voiceId": "...", "modelId": "..." }`
-- Returns: `audio/mpeg` stream
-
-## Project Structure
-
-- `src/app/*`: UI pages and API routes
-- `src/components/*`: app shell and navigation
-- `src/lib/*`: auth, Supabase client, shared types
-- `supabase/schema.sql`: DB schema and RLS policies
-
-## Notes
-
-- Current MVP uses text chat only.
-- Voice (STT/TTS), avatar generation, and advanced memory/vector workflows are scaffolded at env level but not implemented in this pass.
+- Start here: [docs/README.md](docs/README.md)
+- Architecture: [docs/01-architecture-overview.md](docs/01-architecture-overview.md)
+- Data + security: [docs/02-database-and-security.md](docs/02-database-and-security.md)
+- API details: [docs/03-api-reference.md](docs/03-api-reference.md)
+- Frontend UX map: [docs/04-frontend-pages-and-ux.md](docs/04-frontend-pages-and-ux.md)
+- Chat internals: [docs/05-chat-runtime-flow.md](docs/05-chat-runtime-flow.md)

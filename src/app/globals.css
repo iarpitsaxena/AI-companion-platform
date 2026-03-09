@@ -1,5 +1,8 @@
 @import "tailwindcss";
-
+html,
+body {
+  height: 100%;
+}
 :root {
   color-scheme: light;
   --background: #ffffff;
@@ -397,6 +400,32 @@ body {
   background: #ffffff;
 }
 
+.chat-detail-shell {
+  min-height: 0;
+  height: 100%;
+}
+
+.chat-detail-grid {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-detail-header,
+.chat-detail-composer,
+.chat-detail-clear,
+.chat-detail-help {
+  min-height: 0;
+}
+
+.chat-detail-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .chat-index-card {
   background: #ffffff;
 }
@@ -428,4 +457,45 @@ body {
 
 .dashboard-chat-card {
   background: #ffffff;
+}
+
+.hamburger-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #111827 #f3f4f6;
+  scrollbar-gutter: stable;
+}
+
+.hamburger-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.hamburger-scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 999px;
+}
+
+.hamburger-scrollbar::-webkit-scrollbar-thumb {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      #111827 0 3px,
+      #111827 3px 4px,
+      transparent 4px 7px
+    ),
+    #111827;
+  border: 2px solid #f3f4f6;
+  border-radius: 999px;
+  min-height: 32px;
+}
+
+.hamburger-scrollbar::-webkit-scrollbar-thumb:hover {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      #000000 0 3px,
+      #000000 3px 4px,
+      transparent 4px 7px
+    ),
+    #000000;
 }
